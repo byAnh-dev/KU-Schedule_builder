@@ -26,7 +26,7 @@ interface ScheduleState {
 export const useScheduleStore = create<ScheduleState>()(
   persist(
     (set) => ({
-      activeSemesterId: "2026SP",
+      activeSemesterId: "",
       selectedCourses: [],
       selectedLectureSectionByCourseId: {},
       selectedLabSectionByCourseId: {},

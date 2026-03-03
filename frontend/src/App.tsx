@@ -7,6 +7,7 @@ import { BlockTool } from "./components/BlockTool";
 import { ConflictPanel } from "./components/ConflictPanel";
 import { useScheduleStore, useScheduledMeetings, useConflicts } from "./store/useScheduleStore";
 import { listSemesters } from "./lib/data";
+import { generateICS, downloadICS } from "./lib/ics";
 import { Semester, DayOfWeek } from "./lib/types";
 import { getBestSection, START_HOUR, MIN_PER_CELL } from "./lib/schedule";
 import { Select } from "./components/ui/select";
@@ -37,7 +38,17 @@ export default function App() {
   );
 
   useEffect(() => {
-    listSemesters().then(setSemesters);
+    listSemesters().then((loaded) => {
+      setSemesters(loaded);
+      // If the persisted semester ID is missing or not in the loaded list,
+      // default to the first available semester.
+      if (loaded.length > 0) {
+        const ids = loaded.map((s) => s.id);
+        if (!activeSemesterId || !ids.includes(activeSemesterId)) {
+          setActiveSemesterId(loaded[0].id);
+        }
+      }
+    });
   }, []);
 
   const handleSemesterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -117,6 +128,19 @@ export default function App() {
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={scheduledMeetings.length === 0}
+              onClick={() => {
+                const sem = semesters.find((s) => s.id === activeSemesterId);
+                if (!sem) return;
+                const ics = generateICS(scheduledMeetings, sem);
+                downloadICS(ics, `${sem.id}-schedule.ics`);
+              }}
+            >
+              Export .ics
+            </Button>
           </div>
         </header>
 

@@ -33,6 +33,15 @@ class NotImplementedErrorApi(ApiError):
         )
 
 
+class NotFoundError(ApiError):
+    def __init__(self, message: str):
+        super().__init__(
+            code="NOT_FOUND",
+            message=message,
+            status_code=404,
+        )
+
+
 def build_error_response(
     *,
     code: str,

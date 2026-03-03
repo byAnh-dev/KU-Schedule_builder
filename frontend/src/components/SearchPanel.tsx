@@ -5,7 +5,6 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { searchCourses } from "../lib/data";
 import { Course } from "../lib/types";
-import { formatMeetingPattern } from "../lib/schedule";
 import { useScheduleStore } from "../store/useScheduleStore";
 
 export function SearchPanel() {
@@ -66,34 +65,25 @@ export function SearchPanel() {
           )}
           {results.map((course) => {
             const isAdded = selectedCourses.some((c) => c.id === course.id);
-            const lecComponents = course.components.filter(c => c.type === "LEC");
-            
+
             return (
-              <Card key={course.id} className="p-[12px] flex flex-col gap-2 hover:bg-slate-50 transition-colors border-portal-border">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-portal-text">{course.id}</h4>
-                    <p className="text-[14px] text-portal-text-secondary">{course.title} ({course.credits} cr)</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant={isAdded ? "portalSecondary" : "portalPrimary"}
-                    disabled={isAdded}
-                    onClick={() => {
-                      addCourse(course);
-                      setIsOpen(false);
-                      setQuery("");
-                    }}
-                  >
-                    {isAdded ? "Added" : <><Plus className="h-4 w-4 mr-1" /> Add</>}
-                  </Button>
+              <Card key={course.id} className="p-[12px] flex items-center justify-between hover:bg-slate-50 transition-colors border-portal-border">
+                <div>
+                  <h4 className="font-bold text-portal-text">{course.id}</h4>
+                  <p className="text-[14px] text-portal-text-secondary">{course.title}</p>
                 </div>
-                {lecComponents.length > 0 && (
-                  <div className="text-[12px] text-portal-text-secondary bg-portal-surface border border-portal-border-light p-2 rounded-none">
-                    <span className="font-bold text-portal-text">LEC: </span>
-                    {lecComponents.map(c => formatMeetingPattern(c)).join(" OR ")}
-                  </div>
-                )}
+                <Button
+                  size="sm"
+                  variant={isAdded ? "portalSecondary" : "portalPrimary"}
+                  disabled={isAdded}
+                  onClick={() => {
+                    addCourse(course);
+                    setIsOpen(false);
+                    setQuery("");
+                  }}
+                >
+                  {isAdded ? "Added" : <><Plus className="h-4 w-4 mr-1" /> Add</>}
+                </Button>
               </Card>
             );
           })}

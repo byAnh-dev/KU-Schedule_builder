@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 
+.claude/worktrees/
 venv/
 .venv/
 env/
@@ -12,3 +13,6 @@ backend/__pycache__/
 **/__pycache__/
 
 .DS_Store
+
+# Playwright saved login state — contains session cookies, never commit
+backend/auth/
