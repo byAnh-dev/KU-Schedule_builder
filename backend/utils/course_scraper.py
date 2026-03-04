@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -96,20 +97,28 @@ def login_and_save_state(state_path: Path) -> None:
             print("Auto-navigation failed — paste the URL above into the")
             print("address bar and complete the login manually.\n")
 
-        # Wait up to 5 minutes for the user to finish SSO.
+        # Poll page.url every second until we land on classes.ku.edu.
+        # wait_for_url() breaks on KU's multi-step SSO redirect chain because
+        # the frame gets detached mid-redirect; polling avoids that entirely.
         print("Waiting for you to complete login…")
-        try:
-            page.wait_for_url("**/classes.ku.edu/**", timeout=300_000)
-        except PlaywrightTimeout:
-            print("Timed out (5 min). Please re-run --login and try again.",
-                  file=sys.stderr)
-            browser.close()
-            sys.exit(1)
+        deadline = time.time() + 300  # 5 minutes
+        landed = False
+        while time.time() < deadline:
+            try:
+                current = page.url
+                if (
+                    "classes.ku.edu" in current
+                    and "login" not in current
+                    and "cas" not in current.lower()
+                ):
+                    landed = True
+                    break
+            except Exception:
+                pass  # page may be mid-navigation
+            time.sleep(1)
 
-        # Confirm we are NOT still on a login/CAS page.
-        current = page.url
-        if "login" in current or "cas" in current.lower():
-            print(f"Still on login page ({current}). Login may have failed.",
+        if not landed:
+            print("Timed out (5 min). Please re-run --login and try again.",
                   file=sys.stderr)
             browser.close()
             sys.exit(1)
