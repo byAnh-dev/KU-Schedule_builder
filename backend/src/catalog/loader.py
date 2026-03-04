@@ -42,6 +42,16 @@ _SECTION_TYPE_MAP: dict[str, str] = {
     "DIS": "DIS",
     "REC": "REC",
     "LBN": "LAB",  # lab-lecture combined -> treat as LAB
+    "IND": "LEC",  # independent/directed study -> treat as LEC
+    "FLD": "LEC",  # field study -> treat as LEC
+    "RSH": "LEC",  # rehearsal -> treat as LEC
+    "CLN": "LEC",  # clinical -> treat as LEC
+    "ACT": "LEC",  # activity -> treat as LEC
+    "INT": "LEC",  # internship -> treat as LEC
+    "SEM": "LEC",  # seminar -> treat as LEC
+    "PRA": "LEC",  # practicum -> treat as LEC
+    "STU": "LEC",  # studio -> treat as LEC
+    "WKS": "LEC",  # workshop -> treat as LEC
 }
 
 

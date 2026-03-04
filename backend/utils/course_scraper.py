@@ -26,6 +26,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -121,15 +122,33 @@ def _session_looks_expired(html: str) -> bool:
 # Scraping
 # ---------------------------------------------------------------------------
 
-def _fetch_html(form_data: dict[str, str], state_path: Path) -> str:
-    """POST the search form using saved session state and return the response HTML."""
+def _fetch_html(form_data: dict[str, str], state_path: Path | None) -> str:
+    """POST the search form and return the response HTML.
+
+    The search endpoint is publicly accessible — no auth required.
+    If state_path is given (saved login state), instructor names and class
+    locations will be populated; without it those fields are hidden by the site.
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(storage_state=str(state_path))
 
+        ctx_kwargs: dict = {
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/133.0.0.0 Safari/537.36"
+            ),
+        }
+        if state_path:
+            ctx_kwargs["storage_state"] = str(state_path)
+
+        context = browser.new_context(**ctx_kwargs)
+
+        print("Submitting search form…")
         response = context.request.post(
             SEARCH_URL,
             form=form_data,
+            timeout=0,  # no timeout — full catalog can take 7+ minutes
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -141,16 +160,12 @@ def _fetch_html(form_data: dict[str, str], state_path: Path) -> str:
             },
         )
 
+        status = response.status
         html = response.text()
         browser.close()
 
-    if response.status != 200:
-        raise RuntimeError(f"Search POST returned HTTP {response.status}")
-
-    if _session_looks_expired(html):
-        raise RuntimeError(
-            "Session appears to have expired. Re-run with --login to refresh."
-        )
+    if status != 200:
+        raise RuntimeError(f"Search POST returned HTTP {status}")
 
     return html
 
@@ -264,7 +279,7 @@ def _parse_html(html: str) -> list[dict]:
 
                     col0 = cols[0].get_text(strip=True)
 
-                    if col0 in ("LEC", "LBN", "DIS", "LAB"):
+                    if col0 in ("LEC", "LBN", "DIS", "LAB", "IND", "FLD", "RSH", "CLN", "ACT", "INT", "SEM", "PRA", "STU", "WKS"):
                         # Section header row: type, instructor, topic, CRN, seats
                         section_type = col0
 
@@ -300,6 +315,9 @@ def _parse_html(html: str) -> list[dict]:
                             "courseAttribute": course_attribute,
                             "seatAvailable": seat_available,
                         }
+
+                    elif col0 and col0 not in ("Notes", "Dept Req", "") and "Notes" not in col0:
+                        print(f"  [unknown type] course={course.get('id','')} col0={col0!r}")
 
                     elif "Notes" in col0 and current_id:
                         # Notes row: meeting time + location
@@ -363,22 +381,31 @@ def _parse_html(html: str) -> list[dict]:
     return course_list
 
 
-def scrape_courses(form_data: dict[str, str] | None = None) -> list[dict]:
+def scrape_courses(
+    form_data: dict[str, str] | None = None,
+    limit: int | None = None,
+) -> list[dict]:
     """
     Main entry point.  Returns a list of course dicts.
 
-    Raises RuntimeError if the saved session is missing or expired.
-    Call login_and_save_state() first, or run with --login.
+    Auth is optional — the search works without it, but instructor names and
+    class locations will be absent.  Run with --login first to include them.
+
+    Args:
+        form_data: overrides for DEFAULT_FORM fields.
+        limit: if given, truncate results to this many courses (useful for testing).
     """
-    if not AUTH_STATE_PATH.exists():
-        raise RuntimeError(
-            f"No saved session found at {AUTH_STATE_PATH}. "
-            "Run with --login to authenticate first."
+    state_path = AUTH_STATE_PATH if AUTH_STATE_PATH.exists() else None
+    if not state_path:
+        print(
+            "Note: no saved session found — instructor names and locations will be N/A.\n"
+            f"      Run with --login to include them (saves to {AUTH_STATE_PATH})."
         )
 
     data = {**DEFAULT_FORM, **(form_data or {})}
-    html = _fetch_html(data, AUTH_STATE_PATH)
-    return _parse_html(html)
+    html = _fetch_html(data, state_path)
+    courses = _parse_html(html)
+    return courses[:limit] if limit else courses
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +431,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=str(Path(__file__).parent.parent / "courseDatabase.json"),
         help="Output JSON file path (default: %(default)s).",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Truncate output to N courses (useful for quick testing).",
+    )
+    parser.add_argument(
+        "--search",
+        default="",
+        help="Filter courses by text (e.g. 'EECS 388'). Narrows server response, speeds up testing.",
+    )
     return parser
 
 
@@ -417,7 +455,10 @@ if __name__ == "__main__":
 
     print(f"Scraping term {args.term}…")
     try:
-        courses = scrape_courses({"searchTerm": args.term})
+        form_overrides: dict[str, str] = {"searchTerm": args.term}
+        if args.search:
+            form_overrides["classesSearchText"] = args.search
+        courses = scrape_courses(form_overrides, limit=args.limit)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
