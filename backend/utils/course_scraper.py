@@ -35,6 +35,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 # ---------------------------------------------------------------------------
 
 SEARCH_URL = "https://classes.ku.edu/Classes/CourseSearch.action"
+LOGIN_URL  = "https://classes.ku.edu/Classes/Login.action"
 
 # Where the saved browser state lives.  Not committed to git.
 AUTH_STATE_PATH = Path(__file__).parent.parent / "auth" / "browser_state.json"
@@ -66,11 +67,11 @@ def login_and_save_state(state_path: Path) -> None:
 
     print("Opening browser…")
     print()
-    print(f"  --> Paste this URL into the browser that opens:")
-    print(f"      {SEARCH_URL}")
+    print(f"  --> Paste this URL into the browser if it doesn't load:")
+    print(f"      {LOGIN_URL}")
     print()
     print("Log in through KU SSO. The script saves state automatically")
-    print("once you land back on classes.ku.edu (you have 5 minutes).\n")
+    print("once the login completes (you have 5 minutes).\n")
 
     with sync_playwright() as p:
         # Try real Chrome first; fall back to bundled Chromium.
@@ -92,7 +93,7 @@ def login_and_save_state(state_path: Path) -> None:
         # URL manually into the address bar — the wait_for_url below will
         # still detect when they land on classes.ku.edu.
         try:
-            page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=20_000)
+            page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=20_000)
         except Exception:
             print("Auto-navigation failed — paste the URL above into the")
             print("address bar and complete the login manually.\n")
@@ -108,7 +109,7 @@ def login_and_save_state(state_path: Path) -> None:
                 current = page.url
                 if (
                     "classes.ku.edu" in current
-                    and "login" not in current
+                    and "Login.action" not in current
                     and "cas" not in current.lower()
                 ):
                     landed = True
