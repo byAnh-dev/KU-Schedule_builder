@@ -12,7 +12,8 @@ import { Semester, DayOfWeek } from "./lib/types";
 import { getBestSection, START_HOUR, MIN_PER_CELL } from "./lib/schedule";
 import { Select } from "./components/ui/select";
 import { Button } from "./components/ui/button";
-
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 export default function App() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const activeSemesterId = useScheduleStore((s) => s.activeSemesterId);
@@ -144,6 +145,8 @@ export default function App() {
           </div>
         </header>
 
+     <Analytics mode="production" />
+     <SpeedInsights />
         <div className="flex-1 min-h-0 p-[8px] flex flex-col">
           <div className="flex flex-col xl:flex-row gap-4 w-full flex-1 min-h-0">
             
