@@ -47,7 +47,7 @@ DEFAULT_FORM = {
     "searchTerm": "4252",          # Spring 2025 — change per term
     "searchCourseNumberMin": "001",
     "searchCourseNumberMax": "999",
-    "searchClosed": "false",
+    "searchClosed": "true",
     "searchHonorsClasses": "false",
     "searchShortClasses": "false",
     "searchIncludeExcludeDays": "include",
@@ -240,6 +240,8 @@ def _parse_html(html: str) -> list[dict]:
 
                 if "Prerequisite:" in text:
                     prerequisite = text.split("Prerequisite:")[1].split("\n")[0].strip()
+                    if "Satisfies:" in prerequisite:
+                        prerequisite = prerequisite.split("Satisfies:")[0].rstrip(". ").strip()
                     if "Corequisite" in prerequisite:
                         try:
                             prerequisite = prerequisite.split("Corequisite")[1].strip()

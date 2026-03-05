@@ -60,6 +60,19 @@ def _map_section_type(raw: str | None) -> str:
     return _SECTION_TYPE_MAP.get((raw or "").strip().upper(), "LEC")
 
 
+def _parse_seat_available(raw: Any) -> int | str | None:
+    """Parse seatAvailable: numeric string → int, 'Full' → 'Full', else None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.upper() in {"FULL", "CLOSED"}:
+        return "Full"
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def _normalise_course_code(raw: str | None) -> str:
     """Collapse whitespace and uppercase the subject portion."""
     if not raw:
@@ -135,6 +148,8 @@ def _transform_course(raw: dict[str, Any], semester_id: str) -> dict[str, Any] |
                     "meetings": meetings,
                     "instructor": _null(comp.get("instructor")),
                     "location": _null(comp.get("location")),
+                    "seatAvailable": _parse_seat_available(comp.get("seatAvailable")),
+                    "crn": _null(comp.get("id")),
                 }
             )
 
