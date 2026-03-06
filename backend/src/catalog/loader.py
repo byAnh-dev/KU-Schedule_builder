@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from typing import Any
 
 from src.catalog.meeting_parser import parse_meeting_time
@@ -17,7 +18,7 @@ _DB_PATH = os.path.join(_BACKEND_DIR, "courseDatabase.json")
 
 # Fallback term code if the JSON file doesn't embed one.
 # Override via KU_TERM_CODE env var or by re-scraping (which embeds the term).
-_DEFAULT_TERM_CODE = os.environ.get("KU_TERM_CODE", "4262")
+_DEFAULT_TERM_CODE = os.environ.get("KU_TERM_CODE", "4269")
 
 # ---------------------------------------------------------------------------
 # In-memory store (populated once at startup)
@@ -31,6 +32,12 @@ _search_index: dict[str, list[tuple[str, dict[str, Any]]]] = {}
 
 # [{"id": ..., "label": ...}]
 _semesters: list[dict[str, str]] = []
+
+# { semester_id: term_code } — reverse lookup built during load_catalog()
+_semester_id_to_term_code: dict[str, str] = {}
+
+# Protects concurrent writes to the database file
+_write_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +60,7 @@ _SECTION_TYPE_MAP: dict[str, str] = {
     "PRA": "LEC",  # practicum -> treat as LEC
     "STU": "LEC",  # studio -> treat as LEC
     "WKS": "LEC",  # workshop -> treat as LEC
+    "THE": "LEC",  # thesis -> treat as LEC
 }
 
 
@@ -65,7 +73,7 @@ def _parse_seat_available(raw: Any) -> int | str | None:
     if raw is None:
         return None
     s = str(raw).strip()
-    if s.upper() in {"FULL", "CLOSED"}:
+    if s.upper() in {"FULL", "CLOSED", "UNOPENED"}:
         return "Full"
     try:
         return int(s)
@@ -186,7 +194,7 @@ def load_catalog() -> None:
       2. {"term": "4262", "courses": [...]}              ← single-term
       3. [...]                                           ← legacy bare list
     """
-    global _catalog, _search_index, _semesters
+    global _catalog, _search_index, _semesters, _semester_id_to_term_code
 
     with open(_DB_PATH, encoding="utf-8") as f:
         payload = json.load(f)
@@ -202,6 +210,7 @@ def load_catalog() -> None:
     new_catalog: dict[str, list[dict[str, Any]]] = {}
     new_search_index: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     new_semesters: list[dict[str, str]] = []
+    new_semester_id_to_term_code: dict[str, str] = {}
 
     # Sort by term code so semesters appear in chronological order.
     for term_code in sorted(raw_by_term.keys()):
@@ -219,10 +228,12 @@ def load_catalog() -> None:
             (c["id"].replace(" ", "").lower(), c) for c in courses
         ]
         new_semesters.append({"id": semester_id, "label": label})
+        new_semester_id_to_term_code[semester_id] = term_code
 
     _catalog = new_catalog
     _search_index = new_search_index
     _semesters = new_semesters
+    _semester_id_to_term_code = new_semester_id_to_term_code
 
 
 def get_semesters() -> list[dict[str, str]]:
@@ -245,3 +256,59 @@ def get_course_by_id(semester_id: str, course_id: str) -> dict[str, Any] | None:
         if course["id"] == course_id:
             return course
     return None
+
+
+def get_term_code(semester_id: str) -> str | None:
+    """Return the KU term code for a semester_id, or None if unknown."""
+    return _semester_id_to_term_code.get(semester_id)
+
+
+def merge_raw_courses(raw_courses: list[dict[str, Any]], semester_id: str, term_code: str) -> list[dict[str, Any]]:
+    """
+    Transform raw scraped courses, add any not already in the catalog to
+    the in-memory store, and persist them to courseDatabase.json.
+    Returns the list of newly added (transformed) courses.
+    Thread-safe.
+    """
+    with _write_lock:
+        existing_ids = {c["id"] for c in _catalog.get(semester_id, [])}
+
+        new_transformed: list[dict[str, Any]] = []
+        new_raw: list[dict[str, Any]] = []
+        for raw in raw_courses:
+            course = _transform_course(raw, semester_id)
+            if course and course["id"] not in existing_ids:
+                new_transformed.append(course)
+                new_raw.append(raw)
+                existing_ids.add(course["id"])
+
+        if not new_transformed:
+            return []
+
+        # Update in-memory catalog
+        _catalog.setdefault(semester_id, []).extend(new_transformed)
+        _search_index.setdefault(semester_id, []).extend(
+            (c["id"].replace(" ", "").lower(), c) for c in new_transformed
+        )
+
+        # Persist to disk — append only, never overwrite existing data
+        try:
+            with open(_DB_PATH, encoding="utf-8") as f:
+                payload = json.load(f)
+
+            if isinstance(payload, dict) and "semesters" in payload:
+                payload["semesters"].setdefault(term_code, [])
+                payload["semesters"][term_code].extend(new_raw)
+            elif isinstance(payload, dict) and "term" in payload:
+                payload.setdefault("courses", []).extend(new_raw)
+            else:
+                # Bare list format
+                if isinstance(payload, list):
+                    payload.extend(new_raw)
+
+            with open(_DB_PATH, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            print(f"[loader] Failed to persist new courses: {exc}")
+
+        return new_transformed

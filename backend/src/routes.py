@@ -43,6 +43,14 @@ def search_courses_v1():
     semester_id = _require_param("semesterId")
     query = _require_param("query")
     courses = catalog_service.search_courses(semester_id, query)
+
+    if not courses:
+        # Nothing in local cache — try to fetch live from KU and cache the result
+        from src.catalog.on_demand import scrape_and_cache
+        scrape_and_cache(query, semester_id)
+        # Re-query the (now potentially updated) catalog
+        courses = catalog_service.search_courses(semester_id, query)
+
     return jsonify({
         "data": courses,
         "meta": {"query": query, "semesterId": semester_id, "count": len(courses)},

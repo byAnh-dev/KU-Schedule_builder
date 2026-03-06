@@ -46,7 +46,7 @@ export default function App() {
       if (loaded.length > 0) {
         const ids = loaded.map((s) => s.id);
         if (!activeSemesterId || !ids.includes(activeSemesterId)) {
-          setActiveSemesterId(loaded[0].id);
+          setActiveSemesterId(loaded[loaded.length - 1].id);
         }
       }
     });
@@ -118,7 +118,7 @@ export default function App() {
       onDragOver={handleDragOver} 
       onDragEnd={handleDragEnd}
     >
-      <div className="h-screen bg-portal-bg text-portal-text font-sans flex flex-col overflow-hidden">
+      <div className="h-screen bg-portal-bg text-portal-text font-sans flex flex-col overflow-y-auto xl:overflow-hidden">
         
         <header className="flex-none flex justify-between items-center bg-portal-surface p-4 border-b border-portal-border">
           <h1 className="text-[22px] font-serif font-bold text-portal-title m-0">Schedule Builder</h1>

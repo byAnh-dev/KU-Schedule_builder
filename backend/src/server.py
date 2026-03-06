@@ -6,6 +6,7 @@ from flask import Flask, g, request
 from flask_cors import CORS
 
 from src.catalog.loader import load_catalog
+from src.catalog.seats import load_seats, start_background_reload
 from src.routes import register_routes
 from src.shared.errors import register_error_handlers
 
@@ -15,6 +16,8 @@ def create_app() -> Flask:
     CORS(app)
 
     load_catalog()
+    load_seats()
+    start_background_reload(interval_seconds=300)
 
     @app.before_request
     def attach_request_id() -> None:

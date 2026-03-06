@@ -281,7 +281,7 @@ def _parse_html(html: str) -> list[dict]:
 
                     col0 = cols[0].get_text(strip=True)
 
-                    if col0 in ("LEC", "LBN", "DIS", "LAB", "IND", "FLD", "RSH", "CLN", "ACT", "INT", "SEM", "PRA", "STU", "WKS"):
+                    if col0 in ("LEC", "LBN", "DIS", "LAB", "IND", "FLD", "RSH", "CLN", "ACT", "INT", "SEM", "PRA", "STU", "WKS", "THE"):
                         # Section header row: type, instructor, topic, CRN, seats
                         section_type = col0
 
@@ -306,8 +306,13 @@ def _parse_html(html: str) -> list[dict]:
                                 else "Low Cost Course Materials"
                             )
 
-                        current_id = cols[3].find("strong").get_text(strip=True)
-                        seat_available = cols[4].get_text(strip=True)
+                        crn_tag = cols[3].find("strong") if len(cols) > 3 else None
+                        if not crn_tag:
+                            current_section = {}
+                            current_id = ""
+                            continue
+                        current_id = crn_tag.get_text(strip=True)
+                        seat_available = cols[4].get_text(strip=True) if len(cols) > 4 else "Unopened"
 
                         current_section = {
                             "id": current_id,
@@ -445,9 +450,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter courses by text (e.g. 'EECS 388'). Narrows server response, speeds up testing.",
     )
     parser.add_argument(
+        "--career",
+        default=DEFAULT_FORM["searchCareer"],
+        choices=["Undergraduate", "Graduate", "UndergraduateGraduate"],
+        help="Career level to scrape (default: %(default)s).",
+    )
+    parser.add_argument(
         "--append",
         action="store_true",
         help="Add this term to the existing database instead of overwriting it.",
+    )
+    parser.add_argument(
+        "--check-auth",
+        action="store_true",
+        help="Test whether the saved browser session is still valid (has instructor data).",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help=(
+            "Upsert scraped courses into the existing database: update matching "
+            "courses in place (refreshing instructor/location/seats) and append "
+            "any new ones. Courses not in the scrape are left untouched."
+        ),
     )
     return parser
 
@@ -460,9 +485,36 @@ if __name__ == "__main__":
         print("Login complete. You can now run without --login.")
         sys.exit(0)
 
+    if args.check_auth:
+        if not AUTH_STATE_PATH.exists():
+            print("No saved session found. Run with --login first.")
+            sys.exit(1)
+        print("Testing session with a quick search...")
+        test_data = {**DEFAULT_FORM, "searchTerm": args.term, "classesSearchText": "EECS 388"}
+        html = _fetch_html(test_data, AUTH_STATE_PATH)
+        if _session_looks_expired(html):
+            print("Session EXPIRED. Re-run with --login to refresh.")
+            sys.exit(1)
+        courses = _parse_html(html)
+        if not courses:
+            print("Got no results — check the term code or try a different query.")
+            sys.exit(1)
+        # Check if any section has a real instructor name (not N/A)
+        has_instructor = any(
+            comp.get("instructor") not in (None, "N/A", "")
+            for c in courses
+            for comp in c.get("components", [])
+        )
+        if has_instructor:
+            print("Session is VALID. Instructor names are present.")
+            sys.exit(0)
+        else:
+            print("Session EXPIRED or limited — instructor names are missing.")
+            sys.exit(1)
+
     print(f"Scraping term {args.term}…")
     try:
-        form_overrides: dict[str, str] = {"searchTerm": args.term}
+        form_overrides: dict[str, str] = {"searchTerm": args.term, "searchCareer": args.career}
         if args.search:
             form_overrides["classesSearchText"] = args.search
         courses = scrape_courses(form_overrides, limit=args.limit)
@@ -473,9 +525,9 @@ if __name__ == "__main__":
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load existing semesters if --append, otherwise start fresh.
+    # Load existing semesters if --append or --update, otherwise start fresh.
     semesters_data: dict[str, list] = {}
-    if args.append and out_path.exists():
+    if (args.append or args.update) and out_path.exists():
         with open(out_path, encoding="utf-8") as f:
             existing = json.load(f)
         if isinstance(existing, dict) and "semesters" in existing:
@@ -484,10 +536,26 @@ if __name__ == "__main__":
             # Migrate single-term format.
             semesters_data = {existing["term"]: existing.get("courses", [])}
 
-    semesters_data[args.term] = courses
+    if args.update:
+        # Upsert: update existing courses in place, append new ones.
+        existing_term = semesters_data.get(args.term, [])
+        by_id: dict[str, dict] = {c["id"]: c for c in existing_term}
+        updated = added = 0
+        for course in courses:
+            cid = course.get("id")
+            if cid in by_id:
+                by_id[cid] = course
+                updated += 1
+            else:
+                by_id[cid] = course
+                added += 1
+        semesters_data[args.term] = list(by_id.values())
+        print(f"Updated {updated} existing and added {added} new courses for term {args.term}")
+    else:
+        semesters_data[args.term] = courses
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump({"semesters": semesters_data}, f, indent=2, ensure_ascii=False)
 
     n_terms = len(semesters_data)
-    print(f"Wrote {len(courses)} courses for term {args.term} to {out_path} ({n_terms} term(s) total)")
+    print(f"Wrote {len(semesters_data[args.term])} courses for term {args.term} to {out_path} ({n_terms} term(s) total)")
