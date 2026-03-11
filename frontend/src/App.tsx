@@ -14,6 +14,7 @@ import { Select } from "./components/ui/select";
 import { Button } from "./components/ui/button";
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+
 export default function App() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const activeSemesterId = useScheduleStore((s) => s.activeSemesterId);
@@ -219,7 +220,7 @@ export default function App() {
             href="mailto:anh.hoang@ku.edu"
             className="text-portal-blue hover:underline font-semibold"
           >
-            email me
+            email me!
           </a>
         </footer>
       </div>

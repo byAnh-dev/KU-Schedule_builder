@@ -148,7 +148,7 @@ def _fetch_html(form_data: dict[str, str], state_path: Path | None) -> str:
         response = context.request.post(
             SEARCH_URL,
             form=form_data,
-            timeout=0,  # no timeout — full catalog can take 7+ minutes
+            timeout=600_000,  # 10 min — full catalog can take 7+ minutes
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

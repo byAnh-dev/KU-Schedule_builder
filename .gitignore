@@ -14,5 +14,10 @@ backend/__pycache__/
 
 .DS_Store
 
+# Environment variables — never commit secrets
+.env
+.env.*
+!.env.example
+
 # Playwright saved login state — contains session cookies, never commit
 backend/auth/

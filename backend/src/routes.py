@@ -67,7 +67,7 @@ def search_courses_alias():
 # Course detail
 # ---------------------------------------------------------------------------
 
-@api.get("/api/v1/courses/<path:course_id>")
+@api.get("/api/v1/courses/<string:course_id>")
 def get_course_by_id(course_id: str):
     semester_id = _require_param("semesterId")
     course = catalog_service.get_course_by_id(semester_id, course_id)

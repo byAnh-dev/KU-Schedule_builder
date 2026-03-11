@@ -62,7 +62,10 @@ def start_background_reload(interval_seconds: int = 300) -> None:
     def _loop() -> None:
         while True:
             time.sleep(interval_seconds)
-            load_seats()
+            try:
+                load_seats()
+            except Exception as exc:
+                print(f"[seats] Background reload error (will retry in {interval_seconds}s): {exc}")
 
     t = threading.Thread(target=_loop, daemon=True, name="seats-reloader")
     t.start()
